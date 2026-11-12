@@ -1,343 +1,460 @@
 import React, { useState, useMemo } from 'react';
-import { Header } from './components/Header';
-import { HeroSearchBar } from './components/HeroSearchBar';
-import { ProductCard } from './components/ProductCard';
-import { ProductDetailModal } from './components/ProductDetailModal';
-import { VisualSearchModal } from './components/VisualSearchModal';
-import { ShoppingConciergeDrawer } from './components/ShoppingConciergeDrawer';
-import { PriceAlertModal } from './components/PriceAlertModal';
-import { WatchlistModal } from './components/WatchlistModal';
-import { FilterSidebar } from './components/FilterSidebar';
-import { INITIAL_PRODUCTS } from './data/mockProducts';
-import { Product, ProductCategory, FilterState, SortOption } from './types';
-import { getProductLandedComparison } from './utils/priceCalculator';
-import { Sparkles, SlidersHorizontal, RefreshCw, CheckCircle2, ShieldCheck, MapPin } from 'lucide-react';
+import { Header } from './components/Header.tsx';
+import { HeroSearch } from './components/HeroSearch.tsx';
+import { ProductCard } from './components/ProductCard.tsx';
+import { ProductComparisonView } from './components/ProductComparisonView.tsx';
+import { ImageSearchModal } from './components/ImageSearchModal.tsx';
+import { VoiceSearchModal } from './components/VoiceSearchModal.tsx';
+import { AIScoutDrawer } from './components/AIScoutDrawer.tsx';
+import { PriceAlertModal } from './components/PriceAlertModal.tsx';
+import { ReferralOutboundModal } from './components/ReferralOutboundModal.tsx';
+import { SavedAlertsModal, SavedAlert } from './components/SavedAlertsModal.tsx';
+import { INITIAL_PRODUCTS, Product, StoreOffer, calculateLandedCost } from './data/products.ts';
+import {
+  SlidersHorizontal,
+  Sparkles,
+  ArrowRight,
+  TrendingDown,
+  ShieldCheck,
+  Truck,
+  RotateCcw,
+} from 'lucide-react';
 
 export default function App() {
   const [products] = useState<Product[]>(INITIAL_PRODUCTS);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [alertProduct, setAlertProduct] = useState<Product | null>(null);
-  const [isVisualSearchOpen, setIsVisualSearchOpen] = useState(false);
-  const [isConciergeOpen, setIsConciergeOpen] = useState(false);
-  const [isWatchlistOpen, setIsWatchlistOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [currentLocation, setCurrentLocation] = useState('Singapore (SGD $)');
+  const [maxPriceFilter, setMaxPriceFilter] = useState<number>(2000);
+  const [minPriceFilter, setMinPriceFilter] = useState<number>(50);
 
-  // Watchlist state initialized with first product
-  const [watchlist, setWatchlist] = useState<Product[]>([INITIAL_PRODUCTS[0]]);
-  const [deliveryLocation, setDeliveryLocation] = useState<string>('Singapore (SG 🇸🇬)');
+  // Modals state
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const [isAlertModalOpen, setIsAlertModalOpen] = useState(false);
+  const [selectedAlertProduct, setSelectedAlertProduct] = useState<Product | null>(null);
+  const [isReferralModalOpen, setIsReferralModalOpen] = useState(false);
+  const [activeDeal, setActiveDeal] = useState<{
+    product: Product;
+    offer: StoreOffer;
+    netPrice: number;
+    appliedPromo?: string;
+  } | null>(null);
+  const [isSavedAlertsOpen, setIsSavedAlertsOpen] = useState(false);
+  const [savedAlerts, setSavedAlerts] = useState<SavedAlert[]>([]);
 
-  const [filterState, setFilterState] = useState<FilterState>({
-    category: 'All',
-    minPrice: 50,
-    maxPrice: 5000,
-    shipsToSGOnly: false,
-    inStockOnly: false,
-    storePickupOnly: false,
-    brand: 'All',
-    searchQuery: '',
-    sortBy: 'price_landed_asc',
-  });
+  // Live Refresh Status
+  const [lastRefreshTime, setLastRefreshTime] = useState('Just now');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Extract available brands
-  const availableBrands = useMemo(() => {
-    const brandSet = new Set<string>();
-    products.forEach((p) => brandSet.add(p.brand));
-    return Array.from(brandSet).sort();
-  }, [products]);
-
-  // Filter and sort products
+  // Filtered products list
   const filteredProducts = useMemo(() => {
-    return products
-      .filter((product) => {
-        // Category filter
-        if (filterState.category !== 'All' && product.category !== filterState.category) {
-          return false;
-        }
-
-        // Brand filter
-        if (filterState.brand !== 'All' && product.brand !== filterState.brand) {
-          return false;
-        }
-
-        // Search Query filter
-        if (filterState.searchQuery.trim()) {
-          const q = filterState.searchQuery.toLowerCase();
-          const matchName = product.name.toLowerCase().includes(q);
-          const matchBrand = product.brand.toLowerCase().includes(q);
-          const matchTags = product.tags.some((t) => t.toLowerCase().includes(q));
-          const matchCategory = product.category.toLowerCase().includes(q);
-          const matchDescription = product.description.toLowerCase().includes(q);
-          if (!matchName && !matchBrand && !matchTags && !matchCategory && !matchDescription) {
-            return false;
-          }
-        }
-
-        const comparison = getProductLandedComparison(product);
-
-        // Price range filter
-        if (
-          comparison.lowestLandedPrice < filterState.minPrice ||
-          comparison.lowestLandedPrice > filterState.maxPrice
-        ) {
-          return false;
-        }
-
-        // Ships to SG filter (PDF Page 4)
-        if (filterState.shipsToSGOnly) {
-          const hasSGShip = product.retailers.some(
-            (r) => r.shipsToSG && r.shippingType !== 'Freight Forwarder Required'
-          );
-          if (!hasSGShip) return false;
-        }
-
-        // In-store pickup filter
-        if (filterState.storePickupOnly) {
-          const hasStore = product.retailers.some((r) => r.shippingType === 'Store Pickup Available');
-          if (!hasStore) return false;
-        }
-
-        // In-stock filter
-        if (filterState.inStockOnly) {
-          const hasStock = product.retailers.some((r) => r.inStock);
-          if (!hasStock) return false;
-        }
-
-        return true;
-      })
-      .sort((a, b) => {
-        const compA = getProductLandedComparison(a);
-        const compB = getProductLandedComparison(b);
-
-        if (filterState.sortBy === 'price_landed_asc') {
-          return compA.lowestLandedPrice - compB.lowestLandedPrice;
-        }
-        if (filterState.sortBy === 'price_landed_desc') {
-          return compB.lowestLandedPrice - compA.lowestLandedPrice;
-        }
-        if (filterState.sortBy === 'discount_desc') {
-          const discA = ((a.msrp - compA.lowestLandedPrice) / a.msrp) * 100;
-          const discB = ((b.msrp - compB.lowestLandedPrice) / b.msrp) * 100;
-          return discB - discA;
-        }
-        if (filterState.sortBy === 'rating_desc') {
-          return b.rating - a.rating;
-        }
-        if (filterState.sortBy === 'shipping_fastest') {
-          const fastA = compA.cheapestRetailer.shippingDays.toLowerCase().includes('same-day') || compA.cheapestRetailer.shippingDays.toLowerCase().includes('tomorrow') ? 1 : 0;
-          const fastB = compB.cheapestRetailer.shippingDays.toLowerCase().includes('same-day') || compB.cheapestRetailer.shippingDays.toLowerCase().includes('tomorrow') ? 1 : 0;
-          return fastB - fastA;
-        }
-        return 0;
-      });
-  }, [products, filterState]);
-
-  const handleToggleBookmark = (product: Product) => {
-    setWatchlist((prev) => {
-      const exists = prev.some((p) => p.id === product.id);
-      if (exists) {
-        return prev.filter((p) => p.id !== product.id);
+    return products.filter(product => {
+      // Category filter
+      if (selectedCategory && product.category !== selectedCategory) {
+        return false;
       }
-      return [...prev, product];
+
+      // Search query filter (matches title, brand, category, tags, or description)
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchesQuery =
+          product.title.toLowerCase().includes(q) ||
+          product.brand.toLowerCase().includes(q) ||
+          product.category.toLowerCase().includes(q) ||
+          product.tags.some(t => t.toLowerCase().includes(q)) ||
+          product.description.toLowerCase().includes(q);
+
+        if (!matchesQuery) return false;
+      }
+
+      // Price filter (target range > $50 and < $2,000 from deck)
+      const minLanded = Math.min(...product.offers.map(o => calculateLandedCost(o).netPrice));
+      if (minLanded < minPriceFilter || minLanded > maxPriceFilter) {
+        return false;
+      }
+
+      return true;
     });
+  }, [products, selectedCategory, searchQuery, minPriceFilter, maxPriceFilter]);
+
+  const handleLiveRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      const res = await fetch('/api/retailers/live-refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId: selectedProduct?.id }),
+      });
+      const data = await res.json();
+      if (data.lastChecked) {
+        setLastRefreshTime(data.lastChecked);
+      }
+    } catch {
+      setLastRefreshTime('Just now');
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 600);
+    }
   };
 
-  const handleResetFilters = () => {
-    setFilterState({
-      category: 'All',
-      minPrice: 50,
-      maxPrice: 5000,
-      shipsToSGOnly: false,
-      inStockOnly: false,
-      storePickupOnly: false,
-      brand: 'All',
-      searchQuery: '',
-      sortBy: 'price_landed_asc',
-    });
+  const handleIdentifySuccess = (result: {
+    productName: string;
+    brand: string;
+    category: string;
+    estimatedPriceSGD: number;
+    recommendedQuery: string;
+  }) => {
+    setSearchQuery(result.recommendedQuery || result.productName);
+    if (result.category) {
+      setSelectedCategory(result.category);
+    }
+
+    // Try matching an exact product in our catalog
+    const matched = products.find(
+      p =>
+        p.title.toLowerCase().includes(result.recommendedQuery.toLowerCase()) ||
+        p.brand.toLowerCase().includes(result.brand.toLowerCase()) ||
+        result.recommendedQuery.toLowerCase().includes(p.brand.toLowerCase())
+    );
+
+    if (matched) {
+      setSelectedProduct(matched);
+    }
   };
 
-  const handleApplySearchResult = (searchTerm: string, category?: string) => {
-    setFilterState((prev) => ({
-      ...prev,
-      searchQuery: searchTerm,
-      category: category ? (category as ProductCategory) : prev.category,
-    }));
+  const handleSaveAlert = (alertData: {
+    productId: string;
+    productTitle: string;
+    targetPrice: number;
+    currentPrice: number;
+    email: string;
+  }) => {
+    setSavedAlerts(prev => [
+      ...prev.filter(a => a.productId !== alertData.productId),
+      {
+        ...alertData,
+        dateCreated: new Date().toLocaleDateString('en-SG'),
+      },
+    ]);
+  };
+
+  const handleRemoveAlert = (productId: string) => {
+    setSavedAlerts(prev => prev.filter(a => a.productId !== productId));
+  };
+
+  const handleDealClick = (
+    offer: StoreOffer,
+    product: Product,
+    netPrice: number,
+    appliedPromo?: string
+  ) => {
+    setActiveDeal({
+      product,
+      offer,
+      netPrice,
+      appliedPromo,
+    });
+    setIsReferralModalOpen(true);
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#FBFBFB] text-neutral-900">
-      {/* Top Bar Header adhering strictly to Top Bar Contract */}
+    <div className="min-h-screen flex flex-col bg-stone-50 text-stone-900 font-sans">
+      {/* Top Bar */}
       <Header
-        onOpenVisualSearch={() => setIsVisualSearchOpen(true)}
-        onOpenConcierge={() => setIsConciergeOpen(true)}
-        onOpenWatchlist={() => setIsWatchlistOpen(true)}
-        watchlistCount={watchlist.length}
-        deliveryLocation={deliveryLocation}
-        onSelectLocation={(loc) => setDeliveryLocation(loc)}
-      />
-
-      {/* Hero Search & Comparison Bar */}
-      <HeroSearchBar
-        searchQuery={filterState.searchQuery}
-        onSearchChange={(q) => setFilterState((prev) => ({ ...prev, searchQuery: q }))}
-        selectedCategory={filterState.category}
-        onCategoryChange={(cat) => setFilterState((prev) => ({ ...prev, category: cat }))}
-        onOpenVisualSearch={() => setIsVisualSearchOpen(true)}
-        onOpenConcierge={() => setIsConciergeOpen(true)}
-        sortBy={filterState.sortBy}
-        onSortChange={(sort) => setFilterState((prev) => ({ ...prev, sortBy: sort }))}
-        totalProductsCount={filteredProducts.length}
+        currentLocation={currentLocation}
+        onLocationChange={setCurrentLocation}
+        onOpenAssistant={() => setIsAssistantOpen(true)}
+        savedAlertsCount={savedAlerts.length}
+        onViewAlerts={() => setIsSavedAlertsOpen(true)}
       />
 
       {/* Main Content Area */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
-        <div className="flex flex-col lg:flex-row gap-8 items-start">
-          {/* Left Column: Filter Sidebar */}
-          <div className="w-full lg:w-72 shrink-0">
-            <FilterSidebar
-              filterState={filterState}
-              onFilterChange={(partial) => setFilterState((prev) => ({ ...prev, ...partial }))}
-              onResetFilters={handleResetFilters}
-              availableBrands={availableBrands}
+      <main className="flex-1">
+        {selectedProduct ? (
+          <ProductComparisonView
+            product={selectedProduct}
+            onBack={() => setSelectedProduct(null)}
+            onOpenAlertModal={p => {
+              setSelectedAlertProduct(p);
+              setIsAlertModalOpen(true);
+            }}
+            onSelectDeal={handleDealClick}
+            onRefreshPrices={handleLiveRefresh}
+            lastRefreshTime={lastRefreshTime}
+            isRefreshing={isRefreshing}
+          />
+        ) : (
+          <>
+            {/* Skyscanner Hero & Search Bar */}
+            <HeroSearch
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              onSearchSubmit={q => {
+                if (q) setSearchQuery(q);
+              }}
+              selectedCategory={selectedCategory}
+              onSelectCategory={setSelectedCategory}
+              onOpenVoiceModal={() => setIsVoiceModalOpen(true)}
+              onOpenImageModal={() => setIsImageModalOpen(true)}
+              onOpenAssistant={() => setIsAssistantOpen(true)}
             />
-          </div>
 
-          {/* Right Column: Comparison Results */}
-          <div className="flex-1 min-w-0 w-full space-y-6">
-            {/* Results bar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-200">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-neutral-900">
-                  {filteredProducts.length} {filteredProducts.length === 1 ? 'Product Deal' : 'Product Deals'}
-                </span>
-                {filterState.category !== 'All' && (
-                  <span className="text-xs text-neutral-500">
-                    in <strong>{filterState.category}</strong>
-                  </span>
-                )}
-                {filterState.searchQuery && (
-                  <span className="text-xs text-neutral-500">
-                    matching "{filterState.searchQuery}"
-                  </span>
-                )}
-              </div>
+            {/* Catalog Grid Section */}
+            <section id="explore" className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+              {/* Filter controls row */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 mb-6 border-b border-stone-200">
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-serif font-medium text-stone-950">
+                    {selectedCategory ? `${selectedCategory}` : 'Elevated Everyday Goods'}
+                  </h2>
+                  <p className="text-xs text-stone-500 mt-0.5">
+                    Showing {filteredProducts.length} curated luxury items with verified landed pricing
+                  </p>
+                </div>
 
-              <div className="text-xs text-neutral-500 flex items-center gap-2">
-                <MapPin className="w-3.5 h-3.5 text-neutral-400" />
-                <span>Showing landed rates for {deliveryLocation}</span>
-              </div>
-            </div>
-
-            {/* Products Grid */}
-            {filteredProducts.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {filteredProducts.map((product) => (
-                  <ProductCard
-                    key={product.id}
-                    product={product}
-                    onSelect={(p) => setSelectedProduct(p)}
-                    onSetAlert={(p) => setAlertProduct(p)}
-                    isBookmarked={watchlist.some((w) => w.id === product.id)}
-                    onToggleBookmark={handleToggleBookmark}
+                {/* Price Range Filter Slider (Rough Target Range: $50 to $2,000 from deck) */}
+                <div className="flex items-center gap-3 bg-white px-3.5 py-2 rounded-xl border border-stone-200 text-xs">
+                  <span className="text-stone-500 font-medium">Max Price:</span>
+                  <input
+                    type="range"
+                    min="100"
+                    max="2000"
+                    step="50"
+                    value={maxPriceFilter}
+                    onChange={e => setMaxPriceFilter(Number(e.target.value))}
+                    className="w-24 sm:w-32 accent-stone-950 cursor-pointer"
                   />
-                ))}
-              </div>
-            ) : (
-              /* Empty state */
-              <div className="bg-white border border-neutral-200 rounded-2xl p-12 text-center space-y-4">
-                <div className="w-12 h-12 bg-neutral-100 rounded-full flex items-center justify-center mx-auto text-neutral-400">
-                  <SlidersHorizontal className="w-6 h-6" />
-                </div>
-                <h3 className="text-base font-bold text-neutral-900">No matching products found</h3>
-                <p className="text-xs text-neutral-500 max-w-sm mx-auto leading-relaxed">
-                  We couldn't find any products matching your current filters or search term. Try expanding your price range or search query.
-                </p>
-                <div className="flex items-center justify-center gap-3 pt-2">
-                  <button
-                    onClick={handleResetFilters}
-                    className="px-4 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Reset Filters</span>
-                  </button>
-                  <button
-                    onClick={() => setIsConciergeOpen(true)}
-                    className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Ask AI Concierge</span>
-                  </button>
+                  <span className="font-mono font-bold text-stone-900 w-16 text-right">
+                    ≤ S${maxPriceFilter}
+                  </span>
+                  {(searchQuery || selectedCategory || maxPriceFilter < 2000) && (
+                    <button
+                      onClick={() => {
+                        setSearchQuery('');
+                        setSelectedCategory('');
+                        setMaxPriceFilter(2000);
+                      }}
+                      title="Reset filters"
+                      className="ml-1 text-stone-400 hover:text-stone-900 cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
-            )}
-          </div>
-        </div>
+
+              {/* Grid */}
+              {filteredProducts.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {filteredProducts.map(product => (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      onSelect={setSelectedProduct}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-16 bg-white rounded-2xl border border-stone-200 p-8 space-y-4">
+                  <div className="w-12 h-12 rounded-full bg-stone-100 text-stone-400 mx-auto flex items-center justify-center">
+                    <SlidersHorizontal className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-stone-900">
+                      No matching elevated goods found
+                    </h3>
+                    <p className="text-xs text-stone-500 max-w-sm mx-auto mt-1">
+                      Try clearing search filters or ask our AI Scout to recommend similar goods within your budget.
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => {
+                        setSearchQuery('');
+                        setSelectedCategory('');
+                        setMaxPriceFilter(2000);
+                      }}
+                      className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-lg text-xs font-semibold cursor-pointer"
+                    >
+                      Clear Filters
+                    </button>
+                    <button
+                      onClick={() => setIsAssistantOpen(true)}
+                      className="px-4 py-2 bg-stone-950 hover:bg-stone-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Ask AI Scout</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {/* How It Works & Business Model Section */}
+            <section id="how-it-works" className="bg-stone-100/70 border-t border-stone-200 py-16">
+              <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="text-center max-w-2xl mx-auto mb-12">
+                  <div className="text-xs font-mono font-semibold text-stone-500 uppercase tracking-wider mb-2">
+                    The BASKT Transparency Standard
+                  </div>
+                  <h2 className="text-2xl sm:text-3xl font-serif font-medium text-stone-950 tracking-tight">
+                    Why Skyscanner Works for Elevated Goods
+                  </h2>
+                  <p className="text-xs sm:text-sm text-stone-600 mt-2">
+                    When shopping for goods between $50 and $2,000, unbundled shipping and hidden promo codes routinely distort the true cheapest price.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-white p-6 rounded-2xl border border-stone-200 shadow-xs space-y-3">
+                    <div className="w-9 h-9 rounded-xl bg-stone-950 text-white flex items-center justify-center font-mono font-bold text-sm">
+                      01
+                    </div>
+                    <h3 className="font-semibold text-stone-900 text-base">
+                      Unified Retailer Intelligence
+                    </h3>
+                    <p className="text-xs text-stone-600 leading-relaxed">
+                      We scrape and index real-time inventory from Shopee Mall, Lazada LazMall, Amazon SG, Taobao Tmall Global, and direct brand flagship boutiques.
+                    </p>
+                  </div>
+
+                  <div className="bg-white p-6 rounded-2xl border border-stone-200 shadow-xs space-y-3">
+                    <div className="w-9 h-9 rounded-xl bg-amber-600 text-white flex items-center justify-center font-mono font-bold text-sm">
+                      02
+                    </div>
+                    <h3 className="font-semibold text-stone-900 text-base">
+                      True Landed Cost Math
+                    </h3>
+                    <p className="text-xs text-stone-600 leading-relaxed">
+                      Landed Price = Item Base + Direct Freight - Auto-stacked Vouchers. No surprises at final payment gateway, with clear Singapore customs and warranty flags.
+                    </p>
+                  </div>
+
+                  <div className="bg-white p-6 rounded-2xl border border-stone-200 shadow-xs space-y-3">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-700 text-white flex items-center justify-center font-mono font-bold text-sm">
+                      03
+                    </div>
+                    <h3 className="font-semibold text-stone-900 text-base">
+                      AI Scout Decision Engine
+                    </h3>
+                    <p className="text-xs text-stone-600 leading-relaxed">
+                      Unsure about specific calibers, materials, or silent vs tactile switches? Tell the AI Scout your lifestyle context and get curated recommendations instantly.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </>
+        )}
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-neutral-200 bg-white py-10 px-4 sm:px-6 lg:px-8 mt-12">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 text-xs text-neutral-500">
-          <div className="space-y-1 text-center md:text-left">
-            <div className="font-bold text-neutral-900 text-sm tracking-tight flex items-center gap-2 justify-center md:justify-start">
-              <span>BASKT</span>
-              <span className="text-[10px] uppercase font-semibold text-neutral-600 bg-neutral-100 px-1.5 py-0.5 rounded">
-                Elevated Everyday Goods
-              </span>
-            </div>
-            <p className="max-w-md">
-              A Skyscanner-style independent price comparison engine for electronics, horology, niche fragrances, designer leather goods, and fine organic groceries.
-            </p>
+      {/* Editorial Footer */}
+      <footer className="bg-[#072044] text-sky-200/70 py-12 border-t border-[#0f3263] text-xs">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-6">
+          <div className="flex items-center gap-3">
+            <span className="font-bold tracking-tight text-white text-base">BASKT</span>
+            <span className="text-sky-400/40">·</span>
+            <span className="text-sky-100/80">Consumer Price Comparison for Elevated Goods ($50 – $2,000)</span>
           </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-6 text-neutral-600 font-medium">
-            <button onClick={() => setIsVisualSearchOpen(true)} className="hover:text-neutral-900">
-              Visual Lens Search
+          <div className="flex items-center gap-6 text-sky-200/80">
+            <button
+              onClick={() => {
+                setSelectedProduct(null);
+                setSelectedCategory('');
+                setSearchQuery('');
+              }}
+              className="hover:text-white transition-colors cursor-pointer"
+            >
+              Compare Goods
             </button>
-            <button onClick={() => setIsConciergeOpen(true)} className="hover:text-neutral-900">
-              AI Concierge
+            <button
+              onClick={() => setIsAssistantOpen(true)}
+              className="hover:text-white transition-colors cursor-pointer"
+            >
+              Shopping Scout
             </button>
-            <button onClick={() => setIsWatchlistOpen(true)} className="hover:text-neutral-900">
-              Watchlist ({watchlist.length})
+            <button
+              onClick={() => setIsSavedAlertsOpen(true)}
+              className="hover:text-white transition-colors cursor-pointer"
+            >
+              Tracked Alerts
             </button>
-            <span>Singapore GST Compliant</span>
           </div>
-        </div>
-        <div className="max-w-7xl mx-auto mt-6 pt-4 border-t border-neutral-100 text-[11px] text-neutral-400 text-center">
-          Prices and promo vouchers are refreshed continuously across Shopee Mall, LazMall, Amazon SG/US, Takashimaya, Tangs, and official brand boutiques.
+
+          <div className="text-sky-300/70 font-mono text-[11px]">
+            Singapore · Landed Pricing Verified
+          </div>
         </div>
       </footer>
 
       {/* Modals & Drawers */}
-      <ProductDetailModal
-        product={selectedProduct}
-        onClose={() => setSelectedProduct(null)}
-        onSetAlert={(p) => setAlertProduct(p)}
-        isBookmarked={selectedProduct ? watchlist.some((w) => w.id === selectedProduct.id) : false}
-        onToggleBookmark={handleToggleBookmark}
+      <ImageSearchModal
+        isOpen={isImageModalOpen}
+        onClose={() => setIsImageModalOpen(false)}
+        onIdentifySuccess={handleIdentifySuccess}
       />
 
-      <VisualSearchModal
-        isOpen={isVisualSearchOpen}
-        onClose={() => setIsVisualSearchOpen(false)}
-        onSelectResult={handleApplySearchResult}
+      <VoiceSearchModal
+        isOpen={isVoiceModalOpen}
+        onClose={() => setIsVoiceModalOpen(false)}
+        onVoiceSearchSubmit={text => {
+          setSearchQuery(text);
+          setSelectedCategory('');
+        }}
       />
 
-      <ShoppingConciergeDrawer
-        isOpen={isConciergeOpen}
-        onClose={() => setIsConciergeOpen(false)}
-        onApplyRecommendation={handleApplySearchResult}
-        currentCategory={filterState.category}
+      <AIScoutDrawer
+        isOpen={isAssistantOpen}
+        onClose={() => setIsAssistantOpen(false)}
+        onSelectProductQuery={(q, cat) => {
+          setSearchQuery(q);
+          if (cat) setSelectedCategory(cat);
+          const matched = products.find(
+            p =>
+              p.title.toLowerCase().includes(q.toLowerCase()) ||
+              p.brand.toLowerCase().includes(q.toLowerCase())
+          );
+          if (matched) {
+            setSelectedProduct(matched);
+          }
+        }}
+        currentCategory={selectedCategory}
+        currentSearch={searchQuery}
       />
 
       <PriceAlertModal
-        product={alertProduct}
-        onClose={() => setAlertProduct(null)}
+        isOpen={isAlertModalOpen}
+        onClose={() => {
+          setIsAlertModalOpen(false);
+          setSelectedAlertProduct(null);
+        }}
+        product={selectedAlertProduct}
+        onSaveAlert={handleSaveAlert}
       />
 
-      <WatchlistModal
-        isOpen={isWatchlistOpen}
-        onClose={() => setIsWatchlistOpen(false)}
-        watchlist={watchlist}
-        onRemove={(id) => setWatchlist((prev) => prev.filter((p) => p.id !== id))}
-        onSelectProduct={(p) => setSelectedProduct(p)}
+      <ReferralOutboundModal
+        isOpen={isReferralModalOpen}
+        onClose={() => {
+          setIsReferralModalOpen(false);
+          setActiveDeal(null);
+        }}
+        deal={activeDeal}
+      />
+
+      <SavedAlertsModal
+        isOpen={isSavedAlertsOpen}
+        onClose={() => setIsSavedAlertsOpen(false)}
+        alerts={savedAlerts}
+        onRemoveAlert={handleRemoveAlert}
+        onSelectProduct={productId => {
+          const matched = products.find(p => p.id === productId);
+          if (matched) {
+            setSelectedProduct(matched);
+          }
+        }}
       />
     </div>
   );

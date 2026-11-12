@@ -1,20 +1,39 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <script>
+      // Runtime constraint: HMR is disabled in AI Studio. Ignore WebSocket connection errors.
+      window.addEventListener('unhandledrejection', function(event) {
+        var reason = event && event.reason;
+        var msg = (reason && (reason.message || reason.stack || String(reason))) || '';
+        if (msg.indexOf('WebSocket') !== -1 || msg.indexOf('@vite/client') !== -1 || msg.indexOf('vite:ws') !== -1) {
+          event.preventDefault();
+          if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+        }
+      });
+      window.addEventListener('error', function(event) {
+        var msg = (event && (event.message || event.filename || '')) || '';
+        if (msg.indexOf('WebSocket') !== -1 || msg.indexOf('@vite/client') !== -1) {
+          event.preventDefault();
+          if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+        }
+      });
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>BASKT — Elevated Everyday Goods Price Comparison</title>
-    <meta name="description" content="A smart Skyscanner-style price comparison engine for elevated everyday goods, electronics, luxury watches, branded bags, designer perfumes, and gourmet food." />
-    <meta property="og:title" content="BASKT — Elevated Everyday Goods Price Comparison" />
-    <meta property="og:description" content="A smart Skyscanner-style price comparison engine for elevated everyday goods, electronics, luxury watches, branded bags, designer perfumes, and gourmet food." />
+    <title>BASKT — Price Comparison for Elevated Everyday Goods</title>
+    <meta name="description" content="The Skyscanner for elevated everyday goods. Compare real-time prices across Shopee, Lazada, Amazon, Taobao, and brand flagships with true landed cost, shipping to SG, promo code stacking, and multimodal AI search." />
+    <meta property="og:title" content="BASKT — Price Comparison for Elevated Everyday Goods" />
+    <meta property="og:description" content="The Skyscanner for elevated everyday goods. Compare real-time prices across Shopee, Lazada, Amazon, Taobao, and brand flagships with true landed cost, shipping to SG, promo code stacking, and multimodal AI search." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&family=Playfair+Display:ital,wght@0,400..700;1,400..700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   </head>
-  <body class="bg-[#FBFBFB] text-[#121212] antialiased font-sans selection:bg-[#121212] selection:text-white">
+  <body class="bg-stone-50 text-stone-900 font-sans antialiased selection:bg-amber-100 selection:text-amber-900">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
+

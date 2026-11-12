@@ -1,115 +1,104 @@
 import React from 'react';
-import { Sparkles, Camera, MapPin, Bookmark } from 'lucide-react';
+import { Sparkles, MapPin, SlidersHorizontal, ShieldCheck } from 'lucide-react';
 
 interface HeaderProps {
-  onOpenVisualSearch: () => void;
-  onOpenConcierge: () => void;
-  onOpenWatchlist: () => void;
-  watchlistCount: number;
-  deliveryLocation: string;
-  onSelectLocation: (loc: string) => void;
+  currentLocation: string;
+  onLocationChange: (loc: string) => void;
+  onOpenAssistant: () => void;
+  savedAlertsCount: number;
+  onViewAlerts: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  onOpenVisualSearch,
-  onOpenConcierge,
-  onOpenWatchlist,
-  watchlistCount,
-  deliveryLocation,
-  onSelectLocation,
+  currentLocation,
+  onLocationChange,
+  onOpenAssistant,
+  savedAlertsCount,
+  onViewAlerts,
 }) => {
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-neutral-200">
+    <header className="sticky top-0 z-40 bg-[#072044] border-b border-[#0f3263] text-white transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-8">
-        {/* Zone 1: Brand wordmark */}
-        <a href="/" className="text-xl font-bold tracking-tight text-neutral-950 whitespace-nowrap shrink-0 flex items-center gap-2">
-          <span>BASKT</span>
-          <span className="text-[10px] uppercase font-semibold tracking-wider text-neutral-600 bg-neutral-100 px-2 py-0.5 rounded">
-            Price Intelligence
+        {/* Zone 1: Brand Wordmark */}
+        <div className="flex items-center gap-3 shrink-0">
+          <a href="#" className="flex items-center gap-2 group">
+            <div className="w-8 h-8 rounded-lg bg-[#0062E3] text-white flex items-center justify-center font-bold tracking-tighter text-base group-hover:bg-[#0051bd] transition-colors shadow-sm">
+              B
+            </div>
+            <span className="font-bold tracking-tight text-xl text-white font-sans">
+              BASKT
+            </span>
+          </a>
+          <span className="hidden sm:inline-block text-xs text-sky-200/60 font-mono tracking-wider uppercase border-l border-white/20 pl-3">
+            $50 — $2,000 Goods
           </span>
-        </a>
+        </div>
 
-        {/* Zone 2: 4-5 concise navigation links */}
-        <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-neutral-600">
+        {/* Zone 2: Navigation Links */}
+        <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-sky-100/90">
+          <a href="#explore" className="hover:text-white transition-colors whitespace-nowrap">
+            Compare
+          </a>
+          <a href="#how-it-works" className="hover:text-white transition-colors whitespace-nowrap">
+            How It Works
+          </a>
           <button
-            onClick={() => {
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            className="hover:text-neutral-950 transition-colors whitespace-nowrap shrink-0"
+            onClick={onViewAlerts}
+            className="hover:text-white transition-colors whitespace-nowrap flex items-center gap-1.5 cursor-pointer"
           >
-            Price Comparison
-          </button>
-          <button
-            onClick={onOpenVisualSearch}
-            className="flex items-center gap-1.5 hover:text-neutral-950 transition-colors whitespace-nowrap shrink-0"
-          >
-            <Camera className="w-4 h-4 text-neutral-500" />
-            <span>Visual Lens</span>
-          </button>
-          <button
-            onClick={onOpenConcierge}
-            className="flex items-center gap-1.5 hover:text-neutral-950 transition-colors whitespace-nowrap shrink-0 text-amber-700 font-semibold"
-          >
-            <Sparkles className="w-4 h-4 text-amber-600" />
-            <span>AI Shopping Concierge</span>
-          </button>
-          <button
-            onClick={onOpenWatchlist}
-            className="flex items-center gap-1.5 hover:text-neutral-950 transition-colors whitespace-nowrap shrink-0"
-          >
-            <Bookmark className="w-4 h-4 text-neutral-500" />
-            <span>Watchlist</span>
-            {watchlistCount > 0 && (
-              <span className="text-xs font-semibold tabular-nums text-white bg-neutral-900 rounded-full px-1.5 py-0.2">
-                {watchlistCount}
+            <span>Price Alerts</span>
+            {savedAlertsCount > 0 && (
+              <span className="text-xs font-mono bg-[#0062E3] text-white px-1.5 py-0.2 rounded-full font-semibold">
+                {savedAlertsCount}
               </span>
             )}
           </button>
+          <div className="flex items-center gap-1.5 text-xs text-sky-300 bg-[#0a2f5f] border border-sky-400/25 px-2.5 py-1 rounded-md">
+            <ShieldCheck className="w-3.5 h-3.5 text-sky-400" />
+            <span>Landed Cost Verified</span>
+          </div>
         </nav>
 
-        {/* Zone 3: 1 primary action */}
+        {/* Zone 3: Actions (Location Selector & AI Concierge) */}
         <div className="flex items-center gap-3 shrink-0">
-          {/* Location Delivery Selector (Addresses Page 2 & Page 4 'Ships to SG' requirement) */}
+          {/* Location Selector */}
           <div className="relative group">
-            <button
-              type="button"
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-700 bg-neutral-100 hover:bg-neutral-200 rounded-md transition-colors whitespace-nowrap shrink-0"
-            >
-              <MapPin className="w-3.5 h-3.5 text-neutral-500" />
-              <span>Ships to: {deliveryLocation}</span>
+            <button className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-sky-100 bg-[#0c2e5c] hover:bg-[#123b74] border border-[#184687] rounded-lg transition-colors whitespace-nowrap cursor-pointer">
+              <MapPin className="w-3.5 h-3.5 text-sky-400" />
+              <span>{currentLocation}</span>
             </button>
-            <div className="absolute right-0 mt-1 w-44 bg-white border border-neutral-200 rounded-md shadow-lg hidden group-hover:block z-50 p-1">
-              <div className="px-2 py-1 text-[11px] font-semibold text-neutral-600">Select Destination</div>
-              <button
-                onClick={() => onSelectLocation('Singapore (SG 🇸🇬)')}
-                className="w-full text-left px-2 py-1.5 text-xs hover:bg-neutral-100 rounded text-neutral-800 flex items-center justify-between"
-              >
-                <span>Singapore 🇸🇬</span>
-                <span className="text-[10px] text-emerald-600 font-medium">GST & Duties calc</span>
-              </button>
-              <button
-                onClick={() => onSelectLocation('Malaysia (MY 🇲🇾)')}
-                className="w-full text-left px-2 py-1.5 text-xs hover:bg-neutral-100 rounded text-neutral-800 flex items-center justify-between"
-              >
-                <span>Malaysia 🇲🇾</span>
-                <span className="text-[10px] text-neutral-500">Cross-border</span>
-              </button>
-              <button
-                onClick={() => onSelectLocation('United States (US 🇺🇸)')}
-                className="w-full text-left px-2 py-1.5 text-xs hover:bg-neutral-100 rounded text-neutral-800 flex items-center justify-between"
-              >
-                <span>United States 🇺🇸</span>
-                <span className="text-[10px] text-neutral-500">Global</span>
-              </button>
+            <div className="absolute right-0 top-full mt-1.5 w-48 bg-white text-stone-900 border border-stone-200 rounded-xl shadow-xl p-1.5 hidden group-hover:block transition-all z-50">
+              <div className="text-[11px] font-semibold text-stone-400 px-2.5 py-1 uppercase tracking-wider">
+                Buying Destination
+              </div>
+              {[
+                { code: 'Singapore (SGD $)', label: 'Singapore (SGD S$)' },
+                { code: 'Malaysia (MYR RM)', label: 'Malaysia (MYR RM)' },
+                { code: 'Hong Kong (HKD $)', label: 'Hong Kong (HKD $)' },
+              ].map(loc => (
+                <button
+                  key={loc.code}
+                  onClick={() => onLocationChange(loc.code)}
+                  className={`w-full text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors flex items-center justify-between cursor-pointer ${
+                    currentLocation === loc.code
+                      ? 'bg-[#072044] text-white font-medium'
+                      : 'text-stone-700 hover:bg-stone-100'
+                  }`}
+                >
+                  <span>{loc.label}</span>
+                </button>
+              ))}
             </div>
           </div>
 
+          {/* AI Scout Button */}
           <button
-            onClick={onOpenConcierge}
-            className="px-4 py-2 text-xs font-semibold text-white bg-neutral-900 rounded-lg hover:bg-neutral-800 transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5"
+            onClick={onOpenAssistant}
+            className="flex items-center gap-2 px-3.5 py-1.5 text-xs font-medium text-white bg-[#0062E3] hover:bg-[#0051bd] rounded-lg transition-all shadow-sm hover:shadow cursor-pointer"
           >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>AI Concierge</span>
+            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+            <span className="hidden sm:inline">AI Shopping Scout</span>
+            <span className="sm:hidden">Scout</span>
           </button>
         </div>
       </div>

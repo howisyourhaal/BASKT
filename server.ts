@@ -1,8 +1,9 @@
 import express from 'express';
+import { createServer as createViteServer } from 'vite';
+import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { GoogleGenAI, Type } from '@google/genai';
 
 dotenv.config();
 
@@ -10,13 +11,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const PORT = 3000;
 
 app.use(express.json({ limit: '25mb' }));
 
-// Initialize GoogleGenAI SDK server-side
+// Initialize Gemini Client
 const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY || '',
+  apiKey: process.env.GEMINI_API_KEY,
   httpOptions: {
     headers: {
       'User-Agent': 'aistudio-build',
@@ -24,280 +25,181 @@ const ai = new GoogleGenAI({
   },
 });
 
-// Timeout helper for snappy UI responsiveness
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallbackValue: T): Promise<T> {
-  let timer: NodeJS.Timeout;
-  const timeoutPromise = new Promise<T>((resolve) => {
-    timer = setTimeout(() => resolve(fallbackValue), timeoutMs);
-  });
-  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
-}
-
-// In-memory price alert registrations
-interface PriceAlertSubscription {
-  id: string;
-  productId: string;
-  productName: string;
-  targetPrice: number;
-  currentPrice: number;
-  email: string;
-  createdAt: string;
-}
-const priceAlerts: PriceAlertSubscription[] = [];
-
-// Visual Search API: analyzes user uploaded photo or sample
-app.post('/api/search/visual', async (req, res) => {
+// API: Multimodal Image Identification for BASKT
+app.post('/api/gemini/identify-image', async (req, res) => {
   try {
     const { imageBase64, mimeType = 'image/jpeg' } = req.body;
-
     if (!imageBase64) {
-      return res.status(400).json({ error: 'Missing imageBase64' });
+      return res.status(400).json({ error: 'Missing imageBase64 in request' });
     }
 
-    // Strip header prefix if present (e.g. data:image/jpeg;base64,...)
-    const cleanBase64 = imageBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '');
+    const cleanBase64 = imageBase64.replace(/^data:image\/[a-zA-Z0-9]+;base64,/, '');
 
-    if (!process.env.GEMINI_API_KEY) {
-      // Fallback response if API key is temporarily unavailable
-      return res.json({
-        identifiedName: 'Ergonomic Wireless Computer Mouse',
-        brand: 'Logitech',
-        category: 'Electronics',
-        attributes: ['Ergonomic Grip', 'Wireless Bluetooth', 'Matte Finish', 'Precision Scroll Wheel'],
-        suggestedQuery: 'Logitech MX Master 3S',
-        confidence: 0.92,
-        estimatedPriceRange: '$140 - $190',
-        note: 'AI visual analysis (Mock fallback activated - connect GEMINI_API_KEY in Secrets for live multimodal inference)'
-      });
-    }
-
-    const imagePart = {
-      inlineData: {
-        mimeType: mimeType || 'image/jpeg',
-        data: cleanBase64,
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: [
+        {
+          inlineData: {
+            mimeType,
+            data: cleanBase64,
+          },
+        },
+        {
+          text: `You are BASKT's visual product scanner for elevated everyday goods ($50-$2,000 range, e.g. watches, luxury audio/electronics, niche perfumes, designer utility bags, organic fine food).
+Analyze this uploaded image and return a JSON object with:
+{
+  "productName": "Most likely specific product name",
+  "brand": "Identified brand name or close match",
+  "category": "One of: Electronics | Watches | Perfume/Toiletries | Branded Bags | Organic Expensive Food",
+  "estimatedPriceSGD": number (e.g. 180),
+  "confidence": "High" | "Medium" | "Low",
+  "keyVisualFeatures": ["3-4 bullet points detailing dial, materials, packaging, model code"],
+  "recommendedQuery": "Best keyword query for price comparison",
+  "curatorComment": "1-2 sentence assessment of authenticity traits or what to look for when buying"
+}
+Return ONLY valid JSON without markdown fences.`,
+        },
+      ],
+      config: {
+        responseMimeType: 'application/json',
       },
-    };
+    });
 
-    const textPart = {
-      text: `Identify this product item in the image. You are an expert retail product identification model for BASKT (a price comparison engine).
-Categorize it into one of: 'Electronics', 'Watches', 'Perfume / Toiletries', 'Branded Bags', 'Organic Expensive Food'.
-Identify the exact product name, brand, key physical attributes/features, and the best search query to find this item in e-commerce stores.`
-    };
+    const text = response.text || '{}';
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      const match = text.match(/\{[\s\S]*\}/);
+      parsed = match ? JSON.parse(match[0]) : { productName: 'Identified Product', brand: 'Unknown' };
+    }
 
-    const response = await withTimeout(
-      ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: { parts: [imagePart, textPart] },
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              identifiedName: { type: Type.STRING, description: 'Specific product model or name' },
-              brand: { type: Type.STRING, description: 'Brand name' },
-              category: { type: Type.STRING, description: 'Electronics, Watches, Perfume / Toiletries, Branded Bags, or Organic Expensive Food' },
-              attributes: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: 'Key visible product features and qualities'
-              },
-              suggestedQuery: { type: Type.STRING, description: 'Optimized search keyword for price comparison' },
-              estimatedPriceRange: { type: Type.STRING, description: 'Expected market price range in SGD e.g. $150 - $250' },
-              confidence: { type: Type.NUMBER, description: 'Confidence between 0.1 and 1.0' }
-            },
-            required: ['identifiedName', 'brand', 'category', 'attributes', 'suggestedQuery', 'confidence']
-          }
-        }
-      }),
-      5000,
-      null
-    );
-
-    if (!response || !response.text) {
-      return res.json({
-        identifiedName: 'Ergonomic Wireless Computer Mouse',
-        brand: 'Logitech',
+    return res.json({ success: true, result: parsed });
+  } catch (error: any) {
+    console.error('Image identification error:', error);
+    return res.status(500).json({
+      error: error.message || 'Failed to analyze product image',
+      fallback: {
+        productName: 'Elevated Everyday Good',
+        brand: 'Detected Item',
         category: 'Electronics',
-        attributes: ['Ergonomic Grip', 'Wireless Bluetooth', 'Matte Finish', 'Precision Scroll Wheel'],
-        suggestedQuery: 'Logitech MX Master 3S',
-        confidence: 0.95,
-        estimatedPriceRange: '$140 - $190',
-      });
-    }
-
-    const parsed = JSON.parse(response.text || '{}');
-    return res.json(parsed);
-  } catch (error: any) {
-    console.error('Visual search error:', error);
-    // Graceful fallback on rate-limit or parsing error
-    return res.json({
-      identifiedName: 'Detected Luxury Product',
-      brand: 'Premium Brand',
-      category: 'Electronics',
-      attributes: ['High-end Craftsmanship', 'Minimalist Design'],
-      suggestedQuery: 'Wireless Performance Mouse',
-      confidence: 0.85,
-      estimatedPriceRange: '$150 - $350',
-      error: error?.message || 'AI visual analysis fallback'
+        recommendedQuery: 'premium electronics',
+      },
     });
   }
 });
 
-// AI Shopping Assistant / Concierge API
-app.post('/api/chat/assistant', async (req, res) => {
-  const { messages, currentCategory } = req.body || {};
+// API: Conversational Scout / AI Assistant
+// Matches the deck: "Scenario: User have item needed but no specific brand or feature, AI assistant can help to suggest features to narrow selection. e.g. user needs a mouse, the chat will suggest if you need a silent mouse or gaming purpose etc. and narrow down to the selection"
+app.post('/api/gemini/assistant', async (req, res) => {
   try {
-    if (!Array.isArray(messages) || messages.length === 0) {
-      return res.status(400).json({ error: 'Messages array is required' });
+    const { message, history = [], currentCategory, currentSearch } = req.body;
+    if (!message) {
+      return res.status(400).json({ error: 'Message is required' });
     }
 
-    const lastUserMessage = messages[messages.length - 1]?.content || '';
+    const systemInstruction = `You are BASKT Concierge, the elevated everyday goods personal shopping and price comparison advisor (focusing on products $50 - $2,000 across Singapore and Southeast Asia).
+Your job is to help users narrow down what they want when they only have a rough need or desire (e.g., "I need a work mouse", "recommend a daily signature scent", "rugged waterproof bag for commute", "Swiss everyday watch under $1000", "organic honey").
+Be crisp, knowledgeable, tasteful, and decisive like a premier editorial gear guide (Wirecutter meets Monocle).
 
-    if (!process.env.GEMINI_API_KEY) {
-      // Smart offline rules matching the PDF Scenario:
-      // "Scenario: User have item needed but no specific brand or feature, AI assistant can help to suggest features to narrow selection. e.g. user needs a mouse, the chat will suggest if you need a silent mouse or gaming purpose etc."
-      const lower = lastUserMessage.toLowerCase();
-      let reply = "I'm your BASKT Shopping Concierge! What style or priorities are you looking for in your purchase?";
-      let followUpSuggestions = ['Silent Clicks', 'Ergonomic for Wrist', 'High Precision 8K DPI', 'Long Battery Life'];
-      let recommendedCategory = currentCategory || 'Electronics';
-      let recommendedSearchTerm = '';
+Always output pure JSON with the following structure:
+{
+  "reply": "Crisp, helpful response (max 3-4 sentences) that directly advises them on the key trade-offs and explains what to look for.",
+  "suggestedRefinements": [
+    "Short 2-4 word pill label 1 (e.g. 'Silent Click Office')",
+    "Short 2-4 word pill label 2 (e.g. 'Ergonomic Thumb Rest')",
+    "Short 2-4 word pill label 3 (e.g. 'Under S$150')",
+    "Short 2-4 word pill label 4"
+  ],
+  "recommendedSearchQuery": "Optimized keyword to filter the comparison engine (e.g. 'Logitech MX Master 3S' or 'Tissot PRX')",
+  "matchedCategory": "Electronics" | "Watches" | "Perfume/Toiletries" | "Branded Bags" | "Organic Expensive Food" | null,
+  "curatorTip": "1 insider tip on Singapore warranty, landed shipping fees, or voucher timing"
+}
+Return ONLY valid JSON.`;
 
-      if (lower.includes('mouse') || lower.includes('work') || lower.includes('desk')) {
-        reply = "Looking for a mouse? To narrow down the best choice for you: do you prefer an ultra-ergonomic shape with quiet clicks for long office hours, or a lightweight high-polling sensor for high-speed precision? For productivity, the Logitech MX Master 3S is currently at an all-time low of $149!";
-        followUpSuggestions = ['Silent Clicks for Office', 'Ergonomic Wrist Support', 'Mac & Windows Multi-device', 'Under $160'];
-        recommendedCategory = 'Electronics';
-        recommendedSearchTerm = 'MX Master 3S';
-      } else if (lower.includes('watch') || lower.includes('time') || lower.includes('gift')) {
-        reply = "Looking for a standout timepiece? Would you like a Swiss automatic mechanical movement with vintage 1970s integrated bracelet flair (like the Tissot PRX Powermatic 80), or an ultra-rugged titanium smartwatch (like the Apple Watch Ultra 2)?";
-        followUpSuggestions = ['Swiss Automatic Mechanical', 'Everyday Titanium Sports', 'Under $1,000', 'Sapphire Glass'];
-        recommendedCategory = 'Watches';
-        recommendedSearchTerm = 'Tissot PRX';
-      } else if (lower.includes('perfume') || lower.includes('scent') || lower.includes('fragrance')) {
-        reply = "For fragrance, do you lean toward woody, smoky cardamom notes like Le Labo Santal 33, or warm boozy tobacco vanilla like Maison Margiela Jazz Club?";
-        followUpSuggestions = ['Woody & Sandalwood', 'Warm Vanilla & Tobacco', 'Long Lasting EDP', 'Unisex Niche'];
-        recommendedCategory = 'Perfume / Toiletries';
-        recommendedSearchTerm = 'Santal 33';
-      } else if (lower.includes('bag') || lower.includes('leather')) {
-        reply = "For luxury bags, are you seeking a versatile daily crossbody with smooth European box calfskin (like the Songmont Reset Tofu), or an equestrian half-moon silhouette (like the Polène Numéro Dix)?";
-        followUpSuggestions = ['Daily Crossbody', 'Full-Grain Calfskin', 'Under $700', 'Structured Shape'];
-        recommendedCategory = 'Branded Bags';
-        recommendedSearchTerm = 'Songmont';
-      } else if (lower.includes('food') || lower.includes('wagyu') || lower.includes('honey') || lower.includes('matcha')) {
-        reply = "Exploring gourmet delicacies? We track certified Japanese A5 Wagyu Ribeye from Kagoshima, rare harvest UMF 25+ Manuka Honey, and Kyoto ceremonial Uji Matcha with verified cold-chain and authenticity certification.";
-        followUpSuggestions = ['Japanese A5 Wagyu', 'UMF 25+ Manuka Honey', 'Ceremonial Grade Matcha', 'Air-flown Fresh'];
-        recommendedCategory = 'Organic Expensive Food';
-        recommendedSearchTerm = 'Wagyu';
-      }
+    const contents = [
+      ...history.map((h: any) => ({
+        role: h.role === 'user' ? 'user' : 'model',
+        parts: [{ text: h.content }],
+      })),
+      {
+        role: 'user',
+        parts: [
+          {
+            text: `Current user context: Category: ${currentCategory || 'All'}, Current Search: ${currentSearch || 'None'}. User input: "${message}"`,
+          },
+        ],
+      },
+    ];
 
-      return res.json({
-        reply,
-        followUpSuggestions,
-        recommendedCategory,
-        recommendedSearchTerm,
-      });
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents,
+      config: {
+        systemInstruction,
+        responseMimeType: 'application/json',
+      },
+    });
+
+    const text = response.text || '{}';
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      const match = text.match(/\{[\s\S]*\}/);
+      parsed = match ? JSON.parse(match[0]) : {
+        reply: "Here are some elevated recommendations matching your style.",
+        suggestedRefinements: ["High Durability", "Best Value", "Singapore Warranty"],
+        recommendedSearchQuery: message
+      };
     }
 
-    const conversationPrompt = `You are BASKT's AI Luxury & Lifestyle Shopping Concierge (similar to Skyscanner's intuitive travel helper, but for elevated everyday merchandise like Electronics, Swiss/Smart Watches, Niche Fragrances, Designer Leather Bags, and Gourmet Organic Foods).
-Your goal: Help users who have an idea of what they need but haven't settled on specific specs or brands.
-As outlined in our product brief:
-"Scenario: User has item needed but no specific brand or feature, AI assistant can help to suggest features to narrow selection (e.g., user needs a mouse -> suggests if they need silent mouse, ergonomic, or gaming purpose, battery life, travel, etc. and narrow down to the selection)."
-
-Current category focus: ${currentCategory || 'All'}
-
-User conversation history:
-${messages.map((m: any) => `${m.role === 'user' ? 'Shopper' : 'Concierge'}: ${m.content}`).join('\n')}
-
-Analyze the shopper's intent. Provide a warm, refined, concise 2-3 sentence response that helps them choose, highlights critical differentiating features, mentions realistic price insights or top deal recommendations, and gives 3-4 interactive quick-reply suggestion chips.`;
-
-    const response = await withTimeout(
-      ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: conversationPrompt,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              reply: { type: Type.STRING, description: 'Concise, helpful conversational guidance with concrete trade-offs' },
-              followUpSuggestions: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: '3 to 4 short, clickable option phrases under 6 words each'
-              },
-              recommendedCategory: { type: Type.STRING, description: 'Category to filter to if applicable' },
-              recommendedSearchTerm: { type: Type.STRING, description: 'Specific model or keyword to auto-search' }
-            },
-            required: ['reply', 'followUpSuggestions']
-          }
-        }
-      }),
-      5000,
-      null
-    );
-
-    if (!response || !response.text) {
-      // Offline fallback matching PDF scenario
-      return res.json({
-        reply: "Looking for recommendations? Tell me whether you prioritize whisper-quiet operation, ergonomic hand comfort, or high-speed gaming precision. The Logitech MX Master 3S is currently at a 90-day low of $149 with free next-day delivery!",
-        followUpSuggestions: ['Silent Clicks', 'Ergonomic Support', 'Under $160', 'Multi-Device Flow'],
-        recommendedCategory: 'Electronics',
-        recommendedSearchTerm: 'Logitech MX Master 3S'
-      });
-    }
-
-    const parsed = JSON.parse(response.text || '{}');
-    return res.json(parsed);
+    return res.json({ success: true, result: parsed });
   } catch (error: any) {
-    console.error('Chat assistant error:', error);
-    return res.json({
-      reply: "I'm here to help you pinpoint the perfect item and compare the lowest landed prices across Shopee, Lazada, Amazon, and official boutiques. Tell me what product or lifestyle use-case you're shopping for!",
-      followUpSuggestions: ['Ergonomic Workspace Mouse', 'Swiss Automatic Watch', 'Long-lasting Niche Perfume', 'Artisan Calfskin Bag'],
-      recommendedCategory: currentCategory || 'All',
-      recommendedSearchTerm: ''
+    console.error('Assistant error:', error);
+    return res.status(500).json({
+      error: error.message || 'Failed to process assistant request',
+      fallback: {
+        reply: "I can help you filter down to the best product. Would you prefer maximum durability, fastest local Singapore delivery, or lowest landed price?",
+        suggestedRefinements: ["Next-Day SG Delivery", "Official Warranty", "Sub-$300", "Top Rated"],
+        recommendedSearchQuery: req.body.message || ''
+      }
     });
   }
 });
 
-// Price Drop Alert API
-app.post('/api/price-alert', (req, res) => {
-  const { productId, productName, targetPrice, currentPrice, email } = req.body;
-
-  if (!productId || !targetPrice || !email) {
-    return res.status(400).json({ error: 'Missing required alert fields' });
-  }
-
-  const alert: PriceAlertSubscription = {
-    id: `alert-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-    productId,
-    productName: productName || 'Product',
-    targetPrice: Number(targetPrice),
-    currentPrice: Number(currentPrice || targetPrice),
-    email,
-    createdAt: new Date().toISOString()
-  };
-
-  priceAlerts.push(alert);
+// API: Live Retailer Price Refresh Simulation
+app.post('/api/retailers/live-refresh', (req, res) => {
+  const { productId } = req.body;
+  const timestamp = new Date().toLocaleTimeString('en-SG', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  });
 
   return res.json({
     success: true,
-    message: `Price alert activated for ${alert.productName}! We will notify ${alert.email} as soon as the total landed price drops below $${alert.targetPrice}.`,
-    alert
+    productId,
+    lastChecked: timestamp,
+    checkedRetailers: ['Shopee Mall', 'Lazada LazMall', 'Amazon SG', 'Taobao Tmall Global', 'Brand.com Flagship'],
+    status: 'All live API channels synchronized. Best price verified.',
+    exchangeRateSGD: 1.0,
   });
 });
 
-app.get('/api/price-alert/list', (req, res) => {
-  return res.json({ alerts: priceAlerts });
-});
+import http from 'http';
 
-// Vite middleware in dev, static files in production
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
-    const { createServer } = await import('vite');
-    const vite = await createServer({
+  const isProd = process.env.NODE_ENV === 'production';
+  const httpServer = http.createServer(app);
+
+  if (!isProd) {
+    const isHmrDisabled = process.env.DISABLE_HMR === 'true';
+    const vite = await createViteServer({
       server: {
         middlewareMode: true,
-        host: '0.0.0.0',
-        port: port,
+        hmr: isHmrDisabled ? false : { server: httpServer },
       },
       appType: 'spa',
     });
@@ -309,8 +211,8 @@ async function startServer() {
     });
   }
 
-  app.listen(port, '0.0.0.0', () => {
-    console.log(`BASKT Price Comparison engine running on port ${port}`);
+  httpServer.listen(PORT, '0.0.0.0', () => {
+    console.log(`BASKT Server running on http://0.0.0.0:${PORT}`);
   });
 }
 

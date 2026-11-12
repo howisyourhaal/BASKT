@@ -1,154 +1,168 @@
 import React, { useState } from 'react';
-import { Product } from '../types';
-import { getProductLandedComparison } from '../utils/priceCalculator';
-import { X, Bell, CheckCircle2, TrendingDown, Mail, ShieldAlert } from 'lucide-react';
+import { X, Bell, Check, ArrowRight } from 'lucide-react';
+import { Product, calculateLandedCost } from '../data/products.ts';
 
 interface PriceAlertModalProps {
-  product: Product | null;
+  isOpen: boolean;
   onClose: () => void;
+  product: Product | null;
+  onSaveAlert: (alert: {
+    productId: string;
+    productTitle: string;
+    targetPrice: number;
+    currentPrice: number;
+    email: string;
+  }) => void;
 }
 
-export const PriceAlertModal: React.FC<PriceAlertModalProps> = ({ product, onClose }) => {
-  if (!product) return null;
+export const PriceAlertModal: React.FC<PriceAlertModalProps> = ({
+  isOpen,
+  onClose,
+  product,
+  onSaveAlert,
+}) => {
+  if (!isOpen || !product) return null;
 
-  const { lowestLandedPrice } = getProductLandedComparison(product);
-  const [targetPrice, setTargetPrice] = useState<number>(Math.floor(lowestLandedPrice * 0.9));
-  const [email, setEmail] = useState<string>('tansiokhui@gmail.com');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const minLanded = Math.min(...product.offers.map(o => calculateLandedCost(o).netPrice));
+  const suggestedTarget = Math.round(minLanded * 0.92); // 8% drop target
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const [targetPrice, setTargetPrice] = useState(suggestedTarget);
+  const [email, setEmail] = useState('');
+  const [isSaved, setIsSaved] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || targetPrice <= 0) return;
 
-    setIsSubmitting(true);
-    try {
-      const res = await fetch('/api/price-alert', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          productId: product.id,
-          productName: product.name,
-          targetPrice,
-          currentPrice: lowestLandedPrice,
-          email,
-        }),
-      });
+    onSaveAlert({
+      productId: product.id,
+      productTitle: product.title,
+      targetPrice,
+      currentPrice: minLanded,
+      email,
+    });
 
-      const data = await res.json();
-      setSuccessMessage(data.message || `Price alert activated for ${product.name}!`);
-    } catch {
-      setSuccessMessage(`Alert saved for ${product.name}. We will ping ${email} when price reaches $${targetPrice}.`);
-    } finally {
-      setIsSubmitting(false);
-    }
+    setIsSaved(true);
+    setTimeout(() => {
+      setIsSaved(false);
+      onClose();
+    }, 1500);
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
-      <div
-        className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-neutral-200"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="p-4 sm:p-5 border-b border-neutral-200 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/60 backdrop-blur-sm animate-fade-in">
+      <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-stone-200 overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50">
           <div className="flex items-center gap-2">
-            <div className="p-2 bg-neutral-900 text-white rounded-lg">
-              <Bell className="w-4 h-4 text-emerald-400" />
+            <div className="w-7 h-7 rounded-lg bg-amber-500 text-white flex items-center justify-center">
+              <Bell className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-neutral-900">Create Live Price Alert</h2>
-              <div className="text-[11px] text-neutral-500">Track 24/7 price drops across all stores</div>
+              <h3 className="font-semibold text-stone-900 text-sm">Price Drop Alert</h3>
+              <p className="text-xs text-stone-500">Skyscanner-style price monitoring</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-neutral-400 hover:text-neutral-700 rounded-lg hover:bg-neutral-100 transition-colors"
+            className="p-1.5 text-stone-400 hover:text-stone-700 rounded-lg hover:bg-stone-200/60 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-4 sm:p-6 space-y-4">
-          {successMessage ? (
-            <div className="py-6 text-center space-y-3">
-              <div className="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-full mx-auto flex items-center justify-center">
-                <CheckCircle2 className="w-6 h-6" />
+        {/* Body */}
+        <div className="p-6">
+          {isSaved ? (
+            <div className="text-center py-6 space-y-3">
+              <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center">
+                <Check className="w-6 h-6" />
               </div>
-              <h3 className="text-base font-bold text-neutral-900">Alert Confirmed</h3>
-              <p className="text-xs text-neutral-600 leading-relaxed max-w-xs mx-auto">
-                {successMessage}
+              <h4 className="font-bold text-stone-900 text-base">Price Alert Activated!</h4>
+              <p className="text-xs text-stone-500 max-w-xs mx-auto">
+                We'll email you immediately at <span className="font-semibold text-stone-800">{email}</span> if {product.title} drops below S${targetPrice}.
               </p>
-              <button
-                onClick={onClose}
-                className="mt-4 px-4 py-2 bg-neutral-900 text-white text-xs font-semibold rounded-lg hover:bg-neutral-800 transition-colors"
-              >
-                Done
-              </button>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="bg-neutral-50 p-3 rounded-xl border border-neutral-200">
-                <div className="text-[11px] text-neutral-500 font-medium">Selected Product</div>
-                <div className="text-sm font-bold text-neutral-900 truncate mt-0.5">
-                  {product.name}
-                </div>
-                <div className="text-xs text-neutral-600 mt-1 flex items-center justify-between">
-                  <span>Current Lowest Landed:</span>
-                  <strong className="text-neutral-950 font-bold">${lowestLandedPrice}</strong>
+              <div className="flex items-center gap-3 p-3 bg-stone-50 rounded-xl border border-stone-200">
+                <img
+                  src={product.image}
+                  alt={product.title}
+                  className="w-12 h-12 rounded-lg object-cover bg-stone-200 shrink-0"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs text-stone-500 truncate">{product.brand}</div>
+                  <div className="font-semibold text-stone-900 text-xs sm:text-sm truncate">
+                    {product.title}
+                  </div>
+                  <div className="text-xs font-mono font-medium text-stone-700 mt-0.5">
+                    Current Best: S${minLanded.toFixed(0)}
+                  </div>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                  Notify me when price drops to or below (SGD):
+                <label className="block text-xs font-semibold text-stone-700 mb-1">
+                  Notify me when price drops below (SGD):
                 </label>
                 <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-neutral-500 font-bold text-sm">$</span>
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-mono text-stone-400 font-bold">
+                    S$
+                  </span>
                   <input
                     type="number"
-                    min="1"
-                    max={lowestLandedPrice}
                     value={targetPrice}
-                    onChange={(e) => setTargetPrice(Number(e.target.value))}
+                    onChange={e => setTargetPrice(Number(e.target.value))}
+                    className="w-full pl-10 pr-4 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-stone-900 font-mono font-bold text-base outline-none focus:border-stone-950 focus:bg-white"
                     required
-                    className="w-full pl-7 pr-3 py-2 text-sm font-bold text-neutral-900 border border-neutral-300 rounded-lg focus:outline-none focus:border-neutral-900"
                   />
                 </div>
-                <div className="text-[11px] text-neutral-500 mt-1">
-                  Suggested target: 10% below current price (${Math.floor(lowestLandedPrice * 0.9)})
+                <div className="flex items-center gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setTargetPrice(Math.round(minLanded * 0.95))}
+                    className="text-[11px] px-2 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded font-medium cursor-pointer"
+                  >
+                    -5% (S${Math.round(minLanded * 0.95)})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTargetPrice(Math.round(minLanded * 0.9))}
+                    className="text-[11px] px-2 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded font-medium cursor-pointer"
+                  >
+                    -10% (S${Math.round(minLanded * 0.9)})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTargetPrice(Math.round(minLanded * 0.85))}
+                    className="text-[11px] px-2 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded font-medium cursor-pointer"
+                  >
+                    -15% (S${Math.round(minLanded * 0.85)})
+                  </button>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                  Notification Email:
+                <label className="block text-xs font-semibold text-stone-700 mb-1">
+                  Your notification email:
                 </label>
-                <div className="relative">
-                  <Mail className="w-4 h-4 text-neutral-400 absolute left-3 top-2.5" />
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    placeholder="your.email@example.com"
-                    className="w-full pl-9 pr-3 py-2 text-xs text-neutral-900 border border-neutral-300 rounded-lg focus:outline-none focus:border-neutral-900"
-                  />
-                </div>
-              </div>
-
-              <div className="bg-amber-50/80 border border-amber-200 p-2.5 rounded-lg text-[11px] text-amber-900 flex items-start gap-2">
-                <ShieldAlert className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-                <span>
-                  BASKT tracks Shopee, Lazada, Amazon, and official stores every 15 minutes, factoring in promotional coupons.
-                </span>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="name@example.com"
+                  className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-stone-900 text-xs sm:text-sm outline-none focus:border-stone-950 focus:bg-white"
+                  required
+                />
               </div>
 
               <button
                 type="submit"
-                disabled={isSubmitting}
-                className="w-full py-2.5 bg-neutral-900 hover:bg-neutral-800 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition-colors shadow-xs"
+                className="w-full py-2.5 bg-stone-950 hover:bg-stone-800 text-white font-medium text-xs sm:text-sm rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm mt-2"
               >
-                {isSubmitting ? 'Activating Alert...' : 'Activate Price Drop Alert'}
+                <span>Create BASKT Price Tracker</span>
+                <ArrowRight className="w-4 h-4" />
               </button>
             </form>
           )}
