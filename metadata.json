@@ -1,0 +1,6 @@
+{
+  "name": "BASKT",
+  "description": "A smart Skyscanner-style price comparison engine for elevated everyday goods, electronics, luxury watches, branded bags, designer perfumes, and gourmet food.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
