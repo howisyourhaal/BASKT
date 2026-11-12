@@ -1,0 +1,6 @@
+{
+  "name": "BASKT - Price Comparison for Elevated Everyday Goods",
+  "description": "The Skyscanner of elevated everyday merchandise ($50-$2,000). Compare real-time prices across Shopee, Lazada, Amazon, Taobao, and brand flagships with true landed cost, shipping to SG, promo code stacking, and multimodal AI search.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
